@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+{% load static %}
+{% block title %}
+  Login
+{% endblock %}
+{% block content %}
+  <!DOCTYPE html>
+  <html lang="en">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>Sign In - RemindHer</title>
+      <link rel="stylesheet" href="{% static 'css/Login.css' %}" />
+    </head>
+    <body>
+      <div class="container">
+        <div class="auth-box">
+          <div class="header">
+            <h1>Login</h1>
+            <p>Welcome Back!</p>
+          </div>
+
+          <form action="{% url 'api-login' %}" method="POST">
+            {% csrf_token %}
+            <div class="form-group">
+              <label for="email">Email</label>
+              <input type="email" id="email" name="email" required />
+            </div>
+
+            <div class="form-group">
+              <label for="password">Password</label>
+              <input type="password" id="password" name="password" required />
+            </div>
+
+            <div id="errorMessage" class="error-message"></div>
+
+            <button type="submit" id="submitButton" class="primary-button">Sign In</button>
+          </form>
+
+          <div class="divider">
+            <span>Or continue with</span>
+          </div>
+
+          <div class="social-buttons">
+            <button id="googleLogin" class="social-button">
+              <img src="{% static 'images\google.jpg' %}" alt="Google" />
+              Google
+            </button>
+            <button id="facebookLogin" class="social-button">
+              <img src="{% static 'images\facebook.jpg' %}" alt="Facebook" />
+              Facebook
+            </button>
+          </div>
+
+          <p class="switch-auth">
+            Don't have an account?
+            <a href="{% url 'register' %}">Register</a>
+          </p>
+        </div>
+      </div>
+      <script src="{% static 'js/Login.js' %}"></script>
+    </body>
+  </html>
+{% endblock %}

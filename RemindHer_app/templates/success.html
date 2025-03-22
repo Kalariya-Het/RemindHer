@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Reminder Set</title>
+    <script>
+        function snooze(minutes) {
+            fetch('/snooze/{{ reminder.id }}/' + minutes, { method: 'POST' })
+                .then(() => window.close());
+        }
+        function cancel() {
+            fetch('/cancel/{{ reminder.id }}/', { method: 'POST' })
+                .then(() => window.close());
+        }
+    </script>
+</head>
+<body>
+    <h1>Reminder: {{ reminder.task }}</h1>
+    <button onclick="snooze(5)">Snooze 5 min</button>
+    <button onclick="snooze(10)">Snooze 10 min</button>
+    <button onclick="cancel()">Cancel</button>
+</body>
+</html>

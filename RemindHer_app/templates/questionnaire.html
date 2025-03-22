@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Questionnaire</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f4; display: flex; }
+        .container { display: flex; width: 100%; max-width: 1200px; gap: 20px; }
+        .main-content { flex: 2; background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }
+        .chat-box { flex: 1; background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); height: 400px; overflow-y: auto; }
+        .chat-box h2 { margin-top: 0; font-size: 18px; color: #333; }
+        .chat-message { margin: 10px 0; padding: 8px; border-radius: 5px; }
+        .ai-message { background-color: #e0f7fa; text-align: left; }
+        .user-message { background-color: #c8e6c9; text-align: right; }
+        button { padding: 10px 20px; background-color: #007bff; color: #fff; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background-color: #0056b3; }
+        #status { margin-top: 10px; font-style: italic; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="main-content">
+            <h1>Voice Questionnaire</h1>
+            <p>Click the button below to start the voice questionnaire. The AI will ask you questions, and your responses will appear in the chat box on the right.</p>
+            <button onclick="startQuestionnaire()">Start Questionnaire</button>
+            <div id="status">Waiting to start...</div>
+        </div>
+        <div class="chat-box">
+            <h2>Chat</h2>
+            <div id="chat-content"></div>
+        </div>
+    </div>
+
+    <script>
+        const questionnaireUrl = "{% url 'start_questionnaire' %}";
+        
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        function speak(text) {
+            return new Promise(resolve => {
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.onend = resolve;
+                window.speechSynthesis.speak(utterance);
+            });
+        }
+
+        async function getSpeechResponse(question) {
+            const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+            recognition.lang = 'en-US';
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+            recognition.continuous = true;
+
+            return new Promise((resolve) => {
+                console.log(`Starting recognition for: ${question}`);
+                let responseReceived = false;
+
+                recognition.onstart = () => console.log('Recognition started');
+                recognition.onspeechstart = () => console.log('Speech detected');
+                recognition.onresult = (event) => {
+                    const answer = event.results[0][0].transcript.toLowerCase();
+                    console.log(`Recognized: ${answer}`);
+                    responseReceived = true;
+                    recognition.stop();
+                    resolve(answer);
+                };
+                recognition.onerror = (event) => {
+                    console.error('Speech recognition error:', event.error);
+                    if (!responseReceived) {
+                        recognition.stop();
+                        resolve('No response');
+                    }
+                };
+                recognition.onend = () => {
+                    console.log('Recognition ended');
+                    if (!responseReceived) {
+                        console.log('Restarting recognition...');
+                        recognition.start();
+                    }
+                };
+                recognition.start();
+
+                setTimeout(() => {
+                    if (!responseReceived) {
+                        console.log('Timeout reached, stopping recognition');
+                        recognition.stop();
+                        resolve('No response');
+                    }
+                }, 15000);
+            });
+        }
+
+        async function startQuestionnaire() {
+            const status = document.getElementById('status');
+            const chatContent = document.getElementById('chat-content');
+            status.textContent = 'Starting questionnaire...';
+            chatContent.innerHTML = '';
+
+            const questions = [
+                "What is your name?",
+                "How old are you?",
+                "What is your favorite color?",
+                "Where do you live?"
+            ];
+            const responses = {};
+
+            for (const question of questions) {
+                await speak(question);
+                const aiMessage = document.createElement('div');
+                aiMessage.className = 'chat-message ai-message';
+                aiMessage.textContent = `AI: ${question}`;
+                chatContent.appendChild(aiMessage);
+
+                status.textContent = `Please speak your answer to: ${question} (15 seconds)`;
+                const response = await getSpeechResponse(question);
+                const userMessage = document.createElement('div');
+                userMessage.className = 'chat-message user-message';
+                userMessage.textContent = `You: ${response}`;
+                chatContent.appendChild(userMessage);
+                responses[question] = response;
+                chatContent.scrollTop = chatContent.scrollHeight;
+
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+
+            status.textContent = 'Sending responses...';
+            fetch(questionnaireUrl, {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify({ responses })
+            })
+            .then(response => response.json())
+            .then(data => {
+                status.textContent = data.message;
+                speak(data.confirmation || "Questionnaire completed.");
+            })
+            .catch(error => {
+                console.error('Fetch Error:', error);
+                status.textContent = 'Error: ' + error.message;
+            });
+        }
+    </script>
+</body>
+</html>

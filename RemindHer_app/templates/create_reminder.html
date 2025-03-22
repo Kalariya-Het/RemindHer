@@ -1,0 +1,186 @@
+{% comment %} <!DOCTYPE html>
+<html>
+<head>
+    <title>Create Reminder</title>
+    <script>
+        function submitReminder() {
+            const form = document.getElementById('reminderForm');
+            const formData = new FormData(form);
+            fetch('/create/', {
+                method: 'POST',
+                body: formData,
+                headers: {'X-CSRFToken': '{{ csrf_token }}'}
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.message);
+            })
+            .catch(error => console.error('Error:', error));
+        }
+    </script>
+</head>
+<body>
+    <h1>Create a Reminder</h1>
+    {% if error %}
+        <p style="color: red;">{{ error }}</p>
+    {% endif %}
+    <form id="reminderForm" onsubmit="event.preventDefault(); submitReminder();">
+        {% csrf_token %}
+        <input type="hidden" name="task" value="{{ task }}">
+        <input type="hidden" name="task_time" value="{{ task_time }}">
+        <input type="hidden" name="task_date" value="{{ task_date }}">
+        <input type="hidden" name="reminder_type" value="{{ reminder_type }}">
+        <p>Task: {{ task }}</p>
+        <p>Time: {{ task_time }}</p>
+        <p>Date: {{ task_date }}</p>
+        <p>Type: {{ reminder_type }}</p>
+        <button type="submit">Confirm</button>
+    </form>
+</body>
+</html> {% endcomment %}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Create Reminder</title>
+    <style>
+        .container {
+            text-align: center;
+            margin-top: 50px;
+        }
+        button {
+            padding: 15px 30px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #status {
+            margin-top: 20px;
+            color: #333;
+            font-size: 16px;
+        }
+        .error {
+            color: red;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+        #spoken-output {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #555;
+            text-align: left;
+            display: inline-block;
+        }
+        #spoken-output p {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Create a New Reminder</h2>
+        <button id="startButton">Start Voice Reminder</button>
+        <div id="status"></div>
+        <div id="spoken-output">
+            <p id="spoken-task"></p>
+            <p id="spoken-time"></p>
+            <p id="spoken-date"></p>
+            <p id="spoken-type"></p>
+        </div>
+        {% if error %}
+            <div class="error">{{ error }}</div>
+        {% endif %}
+    </div>
+
+    <script>
+        const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+        recognition.lang = 'en-US';
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+
+        const prompts = [
+            "Hey, what's the task?",
+            "At what time should I remind you?",
+            "On which date should I remind you?",
+            "Should I remind you once or daily?"
+        ];
+        let currentPrompt = 0;
+        const spokenData = {};
+
+        function speak(text) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.voice = speechSynthesis.getVoices()[1]; // Female voice (approximate)
+            window.speechSynthesis.speak(utterance);
+            return new Promise(resolve => utterance.onend = resolve);
+        }
+
+        document.getElementById('startButton').addEventListener('click', async function() {
+            document.getElementById('status').innerText = "Listening... Please wait";
+            document.getElementById('spoken-task').innerText = '';
+            document.getElementById('spoken-time').innerText = '';
+            document.getElementById('spoken-date').innerText = '';
+            document.getElementById('spoken-type').innerText = '';
+            currentPrompt = 0;
+
+            await collectVoiceInputs();
+        });
+
+        async function collectVoiceInputs() {
+            while (currentPrompt < prompts.length) {
+                await speak(prompts[currentPrompt]);
+                recognition.start();
+
+                const result = await new Promise(resolve => {
+                    recognition.onresult = (event) => {
+                        const transcript = event.results[0][0].transcript.toLowerCase();
+                        resolve(transcript);
+                    };
+                    recognition.onerror = (event) => resolve(null);
+                    recognition.onend = () => { if (!recognition.result) recognition.stop(); };
+                });
+
+                if (result) {
+                    switch (currentPrompt) {
+                        case 0: spokenData.task = result; document.getElementById('spoken-task').innerText = `Task: "${result}"`; break;
+                        case 1: spokenData.time = result; document.getElementById('spoken-time').innerText = `Time: "${result}"`; break;
+                        case 2: spokenData.date = result; document.getElementById('spoken-date').innerText = `Date: "${result}"`; break;
+                        case 3: spokenData.type = result; document.getElementById('spoken-type').innerText = `Type: "${result}"`; break;
+                    }
+                    currentPrompt++;
+                } else {
+                    await speak("Sorry, I didn't catch that. Please try again.");
+                }
+            }
+
+            // Send to backend
+            document.getElementById('status').innerText = "Processing...";
+            fetch('/create/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify(spokenData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.message) {
+                    document.getElementById('status').innerText = data.message;
+                    if (data.reminder_id) setTimeout(() => window.location.reload(), 2000);
+                } else {
+                    document.getElementById('status').innerText = data.error || "Failed to set reminder";
+                }
+            })
+            .catch(error => {
+                document.getElementById('status').innerText = "An error occurred";
+                console.error('Error:', error);
+            });
+        }
+    </script>
+</body>
+</html>

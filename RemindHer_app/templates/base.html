@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{% block title %}{% endblock %}</title>
+    <script>
+        function checkReminders() {
+            fetch('/check_reminders/', {
+                method: 'GET',
+                headers: {'X-CSRFToken': '{{ csrf_token }}'}
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.reminder) {
+                    showPopup(data.reminder);
+                }
+            });
+        }
+
+        function showPopup(reminder) {
+            const popup = document.createElement('div');
+            popup.style.position = 'fixed';
+            popup.style.top = '50%';
+            popup.style.left = '50%';
+            popup.style.transform = 'translate(-50%, -50%)';
+            popup.style.background = '#fff';
+            popup.style.padding = '20px';
+            popup.style.border = '1px solid #000';
+            popup.innerHTML = `
+                <h2>Reminder: ${reminder.task}</h2>
+                <button onclick="snooze(${reminder.id}, 5)">Snooze 5 min</button>
+                <button onclick="snooze(${reminder.id}, 10)">Snooze 10 min</button>
+                <button onclick="cancel(${reminder.id})">Cancel</button>
+            `;
+            document.body.appendChild(popup);
+        }
+
+        function snooze(reminderId, minutes) {
+            fetch(`/snooze/${reminderId}/${minutes}/`, {
+                method: 'POST',
+                headers: {'X-CSRFToken': '{{ csrf_token }}'}
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.message);
+                document.querySelector('div').remove();
+            });
+        }
+
+        function cancel(reminderId) {
+            fetch(`/cancel/${reminderId}/`, {
+                method: 'POST',
+                headers: {'X-CSRFToken': '{{ csrf_token }}'}
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.message);
+                document.querySelector('div').remove();
+            });
+        }
+
+        setInterval(checkReminders, 60000);  // Check every minute
+    </script>
+</head>
+<body>
+    {% block content %}{% endblock %}
+</body>
+</html>
