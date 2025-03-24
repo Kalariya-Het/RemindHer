@@ -1,25 +1,26 @@
 from django.contrib.auth import authenticate, login
-from .utils.voice_assistant import run_questionnaire  # Relative import from app
 from django.shortcuts import render, redirect
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
-from .models import User, Reminder, VoiceResponse
+from .models import User, Reminder, AddTask
 from .serializers import UserSerializer
 from rest_framework.parsers import JSONParser, FormParser
 from django.contrib.auth.decorators import login_required
 from datetime import datetime, timedelta
 from celery import shared_task
 from django_celery_beat.models import PeriodicTask, CrontabSchedule
+from datetime import datetime  # Use built-in datetime as a fallback
 import json
 from django.http import HttpResponse, JsonResponse
 import dateparser
-from .utils.voice_assistant import run_questionnaire  # Import from utils
 from django.http import JsonResponse
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.csrf import csrf_exempt
-from .utils.voice_assistant import run_questionnaire
 import traceback
+from dateparser import parse
+
+
 # Existing views unchanged
 class RegisterView(APIView):
     def post(self, request):
@@ -47,9 +48,30 @@ class LoginView(APIView):
 
         login(request, user)
         return Response({'message': 'Login successful'}, status=status.HTTP_200_OK)
-
+    
 def Login_view(request):
+    if request.method == 'POST':
+        email = request.POST.get('email')
+        password = request.POST.get('password')
+
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return render(request, 'Login.html', {'error': 'User not registered'})
+
+        if not user.check_password(password):
+            return render(request, 'Login.html', {'error': 'Invalid credentials'})
+
+        if user.status != 'Active':
+            return render(request, 'Login.html', {'error': 'Account is inactive'})
+
+        login(request, user)
+        return redirect('landing')  # Redirect to landing page
+
     return render(request, 'Login.html')
+
+def landing(request):
+    return render(request, 'landing.html')
 
 def Register_view(request):
     return render(request, 'Register.html')
@@ -170,53 +192,60 @@ def check_reminders(request):
         })
     return JsonResponse({'reminder': None})
 
-# New view for voice questionnaire@login_required
+# # New view for voice questionnaire@login_required
+
 @login_required
 @csrf_exempt
 def start_questionnaire(request):
-    print("START: Entering start_questionnaire view")
-    print(f"Request Method: {request.method}")
-    print(f"Request Headers: {dict(request.headers)}")
+    print("START: Entering start_questionnaire")
+    print(f"Method: {request.method}")
     
     is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
-    print(f"Is AJAX request? {is_ajax}")
+    print(f"AJAX: {is_ajax}")
     
     if is_ajax and request.method == 'POST':
-        user_id = request.user.id
-        print(f"User ID: {user_id}")
-        
+        print(f"User ID: {request.user.id}")
         try:
             data = json.loads(request.body)
             responses = data.get('responses', {})
-            print(f"Received responses: {responses}")
+            print(f"Received: {responses}")
             
-            if not responses:
-                return JsonResponse({'message': 'No responses provided'}, status=400)
+            task_name = responses.get("What is the task name?", "Unnamed Task")
+            task_time_str = responses.get("At what time should I remind you?", "10:00 PM")
+            task_date_str = responses.get("On which date should I remind you?", "today")
+            reminder_type = responses.get("Should I remind you once or daily?", "Once")
             
-            for question, response in responses.items():
-                # Truncate to fit max_length=255
-                question = question[:255] if len(question) > 255 else question
-                response = response[:255] if len(response) > 255 else response
-                VoiceResponse.objects.create(user=request.user, question=question, response=response)
+            task_name = "Unnamed Task" if task_name == "No response" else task_name
+            task_time_str = "10:00 PM" if task_time_str == "No response" else task_time_str
+            task_date_str = "today" if task_date_str == "No response" else task_date_str
+            reminder_type = "Once" if reminder_type == "No response" else reminder_type
             
-            confirmation = f"Here’s what {request.user.email} said: "
-            for q, r in responses.items():
-                confirmation += f"{q} - {r}. "
+            print(f"Processed: Name={task_name}, Time={task_time_str}, Date={task_date_str}, Type={reminder_type}")
+            
+            task_time = parse(task_time_str, settings={'TIMEZONE': 'UTC'}).time()
+            task_date = parse(task_date_str, settings={'PREFER_DATES_FROM': 'future', 'DATE_ORDER': 'DMY'}).date()
+            reminder_type = reminder_type.capitalize() if reminder_type.capitalize() in ['Once', 'Daily'] else 'Once'
+            
+            task = AddTask(
+                user=request.user,
+                task_name=task_name[:255],
+                task_time=task_time,
+                task_date=task_date,
+                reminder_type=reminder_type
+            )
+            task.save()
+            print(f"Saved: {task}")
             
             return JsonResponse({
-                'message': 'Questionnaire completed and saved',
-                'confirmation': confirmation
+                'message': 'Task added successfully',
+                'task_id': task.id
             }, status=200)
         except Exception as e:
-            print(f"Error in start_questionnaire: {e}")
-            return JsonResponse({
-                'message': 'Error saving responses',
-                'error': str(e)
-            }, status=200)
+            print(f"Error: {e}")
+            return JsonResponse({'message': 'Error adding task', 'error': str(e)}, status=200)
     
-    print("Rendering questionnaire.html for non-AJAX or GET request")
+    print("Rendering questionnaire.html")
     return render(request, 'questionnaire.html')
-
 
 
 # from django.contrib.auth import authenticate, login

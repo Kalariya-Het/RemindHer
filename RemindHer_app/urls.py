@@ -34,4 +34,5 @@ urlpatterns = [
     path('snooze/<int:reminder_id>/<int:minutes>/', views.snooze_reminder, name='snooze_reminder'),
     path('cancel/<int:reminder_id>/', views.cancel_reminder, name='cancel_reminder'),
     path('check_reminders/', views.check_reminders, name='check_reminders'),
+    path('landing/', views.landing, name='landing'),
 ]

@@ -39,14 +39,14 @@ class User(AbstractBaseUser, PermissionsMixin):
     def __str__(self):
         return self.email
 
-class VoiceResponse(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    question = models.CharField(max_length=255)
-    response = models.CharField(max_length=255)
-    created_at = models.DateTimeField(auto_now_add=True)
+# class VoiceResponse(models.Model):
+#     user = models.ForeignKey(User, on_delete=models.CASCADE)
+#     question = models.CharField(max_length=255)
+#     response = models.CharField(max_length=255)
+#     created_at = models.DateTimeField(auto_now_add=True)
 
-    def __str__(self):
-        return f"{self.question} - {self.response} by {self.user.email}"
+#     def __str__(self):
+#         return f"{self.question} - {self.response} by {self.user.email}"
 
 class Reminder(models.Model):
     REMINDER_TYPES = [('Once', 'Once'), ('Daily', 'Daily')]
@@ -61,3 +61,18 @@ class Reminder(models.Model):
 
     def __str__(self):
         return f"{self.task} for {self.user.email} on {self.task_date} at {self.task_time}"
+    
+
+
+
+class AddTask(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    task_name = models.CharField(max_length=255)
+    task_time = models.TimeField()
+    task_date = models.DateField()
+    reminder_type = models.CharField(max_length=10, choices=[('Once', 'Once'), ('Daily', 'Daily')])
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_completed = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"{self.task_name} for {self.user.email} on {self.task_date} at {self.task_time}"

@@ -261,7 +261,9 @@
 
 import speech_recognition as sr
 import pyttsx3
-from RemindHer_app.models import VoiceResponse, User
+from RemindHer_app.models import User, AddTask
+from dateparser import parse
+
 
 # Initialize global objects
 listener = sr.Recognizer()
@@ -305,44 +307,29 @@ def take_command(prompt):
         talk("Sorry, something went wrong. Please try again.")
         return None
 
-def run_questionnaire(user_id):
-    print(f"Starting questionnaire for user_id: {user_id}")
-    responses = {}
+
+def run_questionnaire(user, responses):
+    print(f"Running questionnaire for user: {user.email}")
+    print(f"Responses: {responses}")
     
-    try:
-        user = User.objects.get(id=user_id)
-        print(f"User found: {user.email}")
-    except User.DoesNotExist:
-        print(f"User with ID {user_id} not found.")
-        return responses
-
-    questions = [
-        "What is your name?",
-        "How old are you?",
-        "What is your favorite color?",
-        "Where do you live?",
-    ]
-
-    for question in questions:
-        response = None
-        attempts = 0
-        max_attempts = 3
-        while response is None and attempts < max_attempts:
-            response = take_command(question)
-            attempts += 1
-            if response is None:
-                talk("Let's try that again.")
-        response = response if response else "No response after retries"
-        VoiceResponse.objects.create(user=user, question=question, response=response)
-        responses[question] = response
-        print(f"Stored: {question} - {response}")
-
-    confirmation = f"Here’s what {user.name} said: "
-    for q, r in responses.items():
-        confirmation += f"{q} - {r}. "
-    talk(confirmation)
-    print(confirmation)
-    return responses
+    task_name = responses.get("What is the task name?", "Unnamed Task")
+    task_time_str = responses.get("At what time should I remind you?", "10:00 PM")
+    task_date_str = responses.get("On which date should I remind you?", "today")
+    reminder_type = responses.get("Should I remind you once or daily?", "Once")
+    
+    task_time = parse(task_time_str, settings={'TIMEZONE': 'UTC'}).time()
+    task_date = parse(task_date_str, settings={'PREFER_DATES_FROM': 'future', 'DATE_ORDER': 'DMY'}).date()
+    reminder_type = reminder_type.capitalize() if reminder_type.capitalize() in ['Once', 'Daily'] else 'Once'
+    
+    task = AddTask(
+        user=user,
+        task_name=task_name[:255],
+        task_time=task_time,
+        task_date=task_date,
+        reminder_type=reminder_type
+    )
+    task.save()
+    return "Task added successfully"
 
 if __name__ == "__main__":
     run_questionnaire(user_id=1)

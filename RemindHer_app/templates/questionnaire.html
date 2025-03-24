@@ -5,47 +5,34 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Voice Questionnaire</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f4; display: flex; }
-        .container { display: flex; width: 100%; max-width: 1200px; gap: 20px; }
-        .main-content { flex: 2; background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); }
-        .chat-box { flex: 1; background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0, 0, 0, 0.1); height: 400px; overflow-y: auto; }
-        .chat-box h2 { margin-top: 0; font-size: 18px; color: #333; }
-        .chat-message { margin: 10px 0; padding: 8px; border-radius: 5px; }
-        .ai-message { background-color: #e0f7fa; text-align: left; }
-        .user-message { background-color: #c8e6c9; text-align: right; }
-        button { padding: 10px 20px; background-color: #007bff; color: #fff; border: none; border-radius: 5px; cursor: pointer; }
-        button:hover { background-color: #0056b3; }
-        #status { margin-top: 10px; font-style: italic; color: #666; }
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f4f4f4; }
+        button { padding: 10px 20px; background: #007bff; color: #fff; border: none; border-radius: 5px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        #status { margin-top: 10px; color: #666; }
+        #chat-content { margin-top: 20px; }
+        .message { padding: 5px; margin: 5px 0; border-radius: 3px; }
+        .ai { background: #e0f7fa; }
+        .user { background: #c8e6c9; text-align: right; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="main-content">
-            <h1>Voice Questionnaire</h1>
-            <p>Click the button below to start the voice questionnaire. The AI will ask you questions, and your responses will appear in the chat box on the right.</p>
-            <button onclick="startQuestionnaire()">Start Questionnaire</button>
-            <div id="status">Waiting to start...</div>
-        </div>
-        <div class="chat-box">
-            <h2>Chat</h2>
-            <div id="chat-content"></div>
-        </div>
+    <div>
+        <h1>Voice Questionnaire</h1>
+        <button onclick="startQuestionnaire()">Start Questionnaire</button>
+        <div id="status">Waiting...</div>
+        <div id="chat-content"></div>
     </div>
 
     <script>
         const questionnaireUrl = "{% url 'start_questionnaire' %}";
-        
+
         function getCookie(name) {
             let cookieValue = null;
-            if (document.cookie && document.cookie !== '') {
-                const cookies = document.cookie.split(';');
-                for (let i = 0; i < cookies.length; i++) {
-                    const cookie = cookies[i].trim();
-                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                        break;
-                    }
-                }
+            if (document.cookie) {
+                document.cookie.split(';').forEach(cookie => {
+                    const [key, value] = cookie.trim().split('=');
+                    if (key === name) cookieValue = decodeURIComponent(value);
+                });
             }
             return cookieValue;
         }
@@ -60,84 +47,104 @@
 
         async function getSpeechResponse(question) {
             const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-            recognition.lang = 'en-US';
-            recognition.interimResults = false;
+            recognition.lang = 'en-US';  // Adjust if needed (e.g., 'en-IN' for Indian English)
+            recognition.interimResults = true;  // Catch every word as it comes
             recognition.maxAlternatives = 1;
-            recognition.continuous = true;
+            recognition.continuous = false;
 
             return new Promise((resolve) => {
-                console.log(`Starting recognition for: ${question}`);
-                let responseReceived = false;
+                console.log(`[START] Listening for: ${question}`);
+                let gotResponse = false;
+                let finalTranscript = '';
 
-                recognition.onstart = () => console.log('Recognition started');
-                recognition.onspeechstart = () => console.log('Speech detected');
+                recognition.onstart = () => console.log("[EVENT] Recognition started");
+                recognition.onaudiostart = () => console.log("[EVENT] Audio detected");
+                recognition.onsoundstart = () => console.log("[EVENT] Sound detected");
+                recognition.onspeechstart = () => console.log("[EVENT] Speech detected");
                 recognition.onresult = (event) => {
-                    const answer = event.results[0][0].transcript.toLowerCase();
-                    console.log(`Recognized: ${answer}`);
-                    responseReceived = true;
-                    recognition.stop();
-                    resolve(answer);
+                    let interimTranscript = '';
+                    for (let i = event.resultIndex; i < event.results.length; i++) {
+                        const transcript = event.results[i][0].transcript.trim();
+                        if (event.results[i].isFinal) {
+                            finalTranscript = transcript;
+                            console.log(`[RESULT] Final: ${finalTranscript}`);
+                        } else {
+                            interimTranscript = transcript;
+                            console.log(`[RESULT] Interim: ${interimTranscript}`);
+                        }
+                    }
+                    if (finalTranscript) {
+                        gotResponse = true;
+                        recognition.stop();
+                        console.log("[STOP] Got final response");
+                        resolve(finalTranscript);
+                    }
                 };
                 recognition.onerror = (event) => {
-                    console.error('Speech recognition error:', event.error);
-                    if (!responseReceived) {
-                        recognition.stop();
-                        resolve('No response');
-                    }
+                    console.error(`[ERROR] ${event.error}`);
+                    recognition.stop();
+                    if (!gotResponse) resolve("No response");
                 };
                 recognition.onend = () => {
-                    console.log('Recognition ended');
-                    if (!responseReceived) {
-                        console.log('Restarting recognition...');
-                        recognition.start();
+                    console.log("[END] Recognition stopped");
+                    if (!gotResponse) {
+                        console.log("[FAIL] No speech recognized");
+                        resolve("No response");
                     }
                 };
-                recognition.start();
 
-                setTimeout(() => {
-                    if (!responseReceived) {
-                        console.log('Timeout reached, stopping recognition');
-                        recognition.stop();
-                        resolve('No response');
-                    }
-                }, 15000);
+                try {
+                    console.log("[TRY] Starting recognition");
+                    recognition.start();
+                    setTimeout(() => {
+                        if (!gotResponse) {
+                            recognition.stop();
+                            console.log("[TIMEOUT] 30 seconds up");
+                        }
+                    }, 30000);  // 30 seconds to speak
+                } catch (err) {
+                    console.error("[EXCEPTION] Start failed:", err);
+                    resolve("No response");
+                }
             });
         }
 
         async function startQuestionnaire() {
+            console.log("[CLICK] Start button pressed");
             const status = document.getElementById('status');
             const chatContent = document.getElementById('chat-content');
-            status.textContent = 'Starting questionnaire...';
+            status.textContent = 'Starting...';
             chatContent.innerHTML = '';
 
             const questions = [
-                "What is your name?",
-                "How old are you?",
-                "What is your favorite color?",
-                "Where do you live?"
+                "What is the task name?",
+                "At what time should I remind you?",
+                "On which date should I remind you?",
+                "Should I remind you once or daily?"
             ];
             const responses = {};
 
             for (const question of questions) {
                 await speak(question);
-                const aiMessage = document.createElement('div');
-                aiMessage.className = 'chat-message ai-message';
-                aiMessage.textContent = `AI: ${question}`;
-                chatContent.appendChild(aiMessage);
+                const aiMsg = document.createElement('div');
+                aiMsg.className = 'message ai';
+                aiMsg.textContent = `AI: ${question}`;
+                chatContent.appendChild(aiMsg);
 
-                status.textContent = `Please speak your answer to: ${question} (15 seconds)`;
+                status.textContent = `Listening for: ${question} (30s to speak)`;
                 const response = await getSpeechResponse(question);
-                const userMessage = document.createElement('div');
-                userMessage.className = 'chat-message user-message';
-                userMessage.textContent = `You: ${response}`;
-                chatContent.appendChild(userMessage);
+                const userMsg = document.createElement('div');
+                userMsg.className = 'message user';
+                userMsg.textContent = `You: ${response}`;
+                chatContent.appendChild(userMsg);
                 responses[question] = response;
-                chatContent.scrollTop = chatContent.scrollHeight;
 
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                chatContent.scrollTop = chatContent.scrollHeight;
+                await new Promise(resolve => setTimeout(resolve, 1000));
             }
 
-            status.textContent = 'Sending responses...';
+            status.textContent = 'Sending...';
+            console.log("[SEND] Responses:", responses);
             fetch(questionnaireUrl, {
                 method: 'POST',
                 headers: {
@@ -147,14 +154,19 @@
                 },
                 body: JSON.stringify({ responses })
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
+                return response.json();
+            })
             .then(data => {
                 status.textContent = data.message;
-                speak(data.confirmation || "Questionnaire completed.");
+                if (data.task_id) speak("Task added successfully!");
+                else speak("Failed to add task.");
             })
             .catch(error => {
-                console.error('Fetch Error:', error);
-                status.textContent = 'Error: ' + error.message;
+                console.error('[FETCH ERROR]', error);
+                status.textContent = 'Error sending responses';
+                speak("Error occurred.");
             });
         }
     </script>

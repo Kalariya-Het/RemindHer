@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Landing Page</title>
+</head>
+<body>
+    <h1>Welcome, {{ request.user.email }}!</h1>
+    <p>This is your landing page after login.</p>
+    <a href="{% url 'create_reminder' %}">Create a Reminder</a>
+</body>
+</html>
